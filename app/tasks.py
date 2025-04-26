@@ -1,33 +1,47 @@
+import asyncio
+
+from sqlalchemy import select
+
 from .algorithms import calculate_statistics
 from .celery import celery_app
-from .database import get_db
+from .database import PgUnitOfWork
 from .models import Statistics, Transaction
 
 
 @celery_app.task(name="app.tasks.update_statistics")
 def update_statistics():
-    db = next(get_db())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     try:
-        # Get all transactions
-        transactions = db.query(Transaction).all()
+        return loop.run_until_complete(_update_statistics_async())
+    finally:
+        loop.close()
+
+
+async def _update_statistics_async():
+    async with PgUnitOfWork() as session:
+        transactions = (await session.execute(select(Transaction))).scalars().all()
+        stats_result = (await session.execute(select(Statistics))).scalar_one_or_none()
 
         if not transactions:
-            # If no transactions, reset statistics
-            stats = Statistics()
-            db.add(stats)
+            if stats_result:
+                stats_result.total_transactions = 0
+                stats_result.average_amount = 0.0
+                stats_result.top_transactions = []
+            else:
+                stats = Statistics()
+                session.add(stats)
         else:
-            # Calculate statistics
             stats = calculate_statistics(transactions)
 
-            # Update or create statistics
-            existing_stats = db.query(Statistics).first()
-            if existing_stats:
-                existing_stats.total_transactions = stats.total_transactions
-                existing_stats.average_amount = stats.average_amount
-                existing_stats.top_transactions = stats.top_transactions
+            if stats_result:
+                stats_result.total_transactions = stats.total_transactions
+                stats_result.average_amount = stats.average_amount
+                stats_result.top_transactions = stats.top_transactions
             else:
-                db.add(stats)
+                session.add(stats)
 
-        db.commit()
-    finally:
-        db.close()
+        await session.commit()
+
+    return "Statistics updated"

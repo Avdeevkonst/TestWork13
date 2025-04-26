@@ -1,43 +1,31 @@
 import heapq
-from typing import List
+from typing import Sequence
 
 from .models import Statistics, Transaction
 
 
-def calculate_statistics(transactions: List[Transaction]) -> Statistics:
-    if not transactions:
-        return Statistics()
+def calculate_statistics(transactions: Sequence[Transaction]) -> Statistics:
+    count = len(transactions)
+    total_amount = sum(transaction.amount for transaction in transactions)
+    average_amount = total_amount / count if count > 0 else 0.0
 
-    # Calculate total and average
-    total_amount = 0.0
+    top_count = 3
+    min_heap = []
+
     for transaction in transactions:
-        total_amount += transaction.amount
+        if len(min_heap) < top_count:
+            heapq.heappush(min_heap, (transaction.amount, transaction.transaction_id))
+        elif transaction.amount > min_heap[0][0]:
+            heapq.heappop(min_heap)
+            heapq.heappush(min_heap, (transaction.amount, transaction.transaction_id))
 
-    average_amount = total_amount / len(transactions)
-
-    # Find top 3 transactions using a min-heap
-    heap = []
-    for transaction in transactions:
-        if len(heap) < 3:
-            heapq.heappush(heap, (transaction.amount, transaction))
-        else:
-            if transaction.amount > heap[0][0]:
-                heapq.heappop(heap)
-                heapq.heappush(heap, (transaction.amount, transaction))
-
-    # Convert heap to sorted list
     top_transactions = []
-    while heap:
-        amount, transaction = heapq.heappop(heap)
-        top_transactions.append(
-            {"transaction_id": transaction.transaction_id, "amount": transaction.amount}
-        )
-
-    # Reverse to get descending order
-    top_transactions.reverse()
+    heap_items = [heapq.heappop(min_heap) for _ in range(len(min_heap))]
+    for amount, transaction_id in reversed(heap_items):
+        top_transactions.append({"transaction_id": transaction_id, "amount": amount})
 
     return Statistics(
-        total_transactions=len(transactions),
+        total_transactions=count,
         average_amount=average_amount,
         top_transactions=top_transactions,
     )

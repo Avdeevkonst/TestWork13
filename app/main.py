@@ -1,9 +1,21 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from fastapi.security import APIKeyHeader
+
+from .routers import router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+
 
 app = FastAPI(
     title="Transaction Service",
     description="A microservice for processing transactions",
+    lifespan=lifespan,
+    version="1.0.0",
 )
 
-api_key_header = APIKeyHeader(name="Authorization")
+
+app.include_router(router)
